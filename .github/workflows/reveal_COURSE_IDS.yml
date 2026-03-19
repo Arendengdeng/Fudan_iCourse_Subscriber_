@@ -1,11 +1,13 @@
-name: Reveal Secret
-on: workflow_dispatch # 手动触发
+name: Find My Secret Tool  # <--- 这个名字会出现在左侧菜单
+
+on: 
+  workflow_dispatch:      # <--- 允许你手动点击按钮触发
 
 jobs:
-  reveal:
+  display_job:
     runs-on: ubuntu-latest
     steps:
-      - name: Read Secret
+      - name: Show the encoded secret
         run: |
-          # 将 Secret 转成 Base64 避开 GitHub 的自动脱敏过滤
+          # 替换下面 YOUR_SECRET_NAME 为你真实的 Secret 名字
           echo "${{ secrets.COURSE_IDS }}" | base64
