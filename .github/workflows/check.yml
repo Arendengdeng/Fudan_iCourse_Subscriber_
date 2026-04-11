@@ -1,8 +1,12 @@
 name: iCourse Check
 
+# 在这里添加全局环境变量
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   schedule:
-    # Every day at 19:36 BTC (UTC + 8)
+    # Every day at 19:36 UTC+8 (11:36 UTC)
     # 设计这个奇怪的时间是为了避免整点时的github队列峰值，避免排队过久。
     - cron: "36 11 * * *"
   workflow_dispatch:
