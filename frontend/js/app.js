@@ -127,6 +127,7 @@ document.addEventListener("alpine:init", () => {
     setup: { token: "", stuid: "", uispsw: "", dashscope: "", smtp: "" },
     setupError: "", setupTesting: false,
     settingsForm: {}, showSecrets: {},
+    exportDialogOpen: false, exportSelection: {}, exportingPdf: false,
     iterations: 10000, repoOwner: "", repoName: "", dataBranch: "data",
     _history: [],
 
@@ -205,6 +206,7 @@ document.addEventListener("alpine:init", () => {
       else if (view === "detail" && params.subId) { this.currentLecture = ICS.db.getLecture(params.subId); this.showTranscript = false; }
       else if (view === "edit") { this.editText = this.currentLecture?.summary || ""; this.editPreview = false; }
       this.view = view;
+      if (view !== "lectures") this.exportDialogOpen = false;
     },
     goBack() {
       const p = this._history.pop();
@@ -216,6 +218,73 @@ document.addEventListener("alpine:init", () => {
     openLecture(id) { this.navigate("detail", { subId: id }); },
     startEdit() { this.navigate("edit"); },
     cancelEdit() { this.goBack(); },
+
+    getExportableLectures() {
+      return (this.lectures || []).filter((lec) => lec.summary && lec.summary.trim());
+    },
+    openExportDialog() {
+      const list = this.getExportableLectures();
+      if (!list.length) { this._toast("No summarized lectures to export", "error"); return; }
+      this.exportSelection = {};
+      list.forEach((lec) => { this.exportSelection[lec.sub_id] = true; });
+      this.exportDialogOpen = true;
+    },
+    closeExportDialog() {
+      if (this.exportingPdf) return;
+      this.exportDialogOpen = false;
+    },
+    isLectureSelected(subId) { return !!this.exportSelection[subId]; },
+    toggleLectureSelection(subId, checked) { this.exportSelection[subId] = !!checked; },
+    setExportAll(checked) {
+      this.getExportableLectures().forEach((lec) => { this.exportSelection[lec.sub_id] = !!checked; });
+    },
+    isExportAllSelected() {
+      const list = this.getExportableLectures();
+      return list.length > 0 && list.every((lec) => this.exportSelection[lec.sub_id]);
+    },
+    selectedExportCount() {
+      return this.getExportableLectures().filter((lec) => this.exportSelection[lec.sub_id]).length;
+    },
+    async exportSelectedToPdf() {
+      // Triggers .github/workflows/export.yml via workflow_dispatch.  The
+      // workflow runs scripts/export_course.py (WeasyPrint) and emails the
+      // PDF to RECEIVER_EMAIL — same output and same code path as a manual
+      // run from the Actions UI.  We dropped the in-browser html2pdf.js
+      // approach because the screenshot-based pipeline produced blank PDFs
+      // unreliably; routing through Actions reuses the working tech stack.
+      if (this.exportingPdf) return;
+      const selected = this.getExportableLectures().filter(
+        (lec) => this.exportSelection[lec.sub_id]
+      );
+      if (!selected.length) {
+        this._toast("Please select at least one lecture", "error");
+        return;
+      }
+      const creds = _loadCreds();
+      if (!creds?.token) {
+        this._toast("Not authenticated", "error");
+        return;
+      }
+      this.exportingPdf = true;
+      try {
+        const subIds = selected.map((lec) => String(lec.sub_id)).join(",");
+        // Workflow files live on the default branch (main).  Surfaced as a
+        // hardcoded "main" for now; expose as a setting if users rename it.
+        await ICS.github.triggerExportWorkflow(
+          this.repoOwner, this.repoName, "main", creds.token,
+          this.currentCourse.course_id, true, subIds
+        );
+        this.exportDialogOpen = false;
+        this._toast(
+          "已触发后台导出，PDF 将在 1-3 分钟内发送到 RECEIVER_EMAIL",
+          "success"
+        );
+      } catch (e) {
+        this._toast(e?.message || "Export failed", "error");
+      } finally {
+        this.exportingPdf = false;
+      }
+    },
 
     async saveEdit() {
       if (this.saving) return;
